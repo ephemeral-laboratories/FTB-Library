@@ -7,7 +7,7 @@ import net.minecraft.util.text.TextFormatting;
 
 import javax.annotation.Nullable;
 import java.math.RoundingMode;
-import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -34,9 +34,26 @@ public class StringUtils
 	public static final Comparator<Object> ID_COMPARATOR = (o1, o2) -> getID(o1, FLAG_ID_FIX).compareToIgnoreCase(getID(o2, FLAG_ID_FIX));
 
 	public static final Map<String, String> TEMP_MAP = new HashMap<>();
-	public static final DecimalFormat DOUBLE_FORMATTER_00 = new DecimalFormat("#0.00");
-	public static final DecimalFormat DOUBLE_FORMATTER_0 = new DecimalFormat("#0.0");
-	public final static int[] INT_SIZE_TABLE = {9, 99, 999, 9999, 99999, 999999, 9999999, 99999999, 999999999, Integer.MAX_VALUE};
+	private static final NumberFormat INTEGER_FORMATTER = NumberFormat.getIntegerInstance();
+	private static final String ZERO_PAD = formatInteger(0);
+	public static final NumberFormat DOUBLE_FORMATTER_00 = NumberFormat.getNumberInstance();
+	public static final NumberFormat DOUBLE_FORMATTER_0 = NumberFormat.getNumberInstance();
+
+	// Dozenal formatting
+	private static final double ONE_K = 12D*12*12;
+	private static final double TEN_K = 12D*12*12*12;
+	private static final double ONE_M = 12D*12*12*12*12*12;
+	private static final double ONE_B = 12D*12*12*12*12*12*12*12*12;
+//	private static final double ONE_K = 1000D;
+//	private static final double TEN_K = 10000D;
+//	private static final double ONE_M = 1000000D;
+//	private static final double ONE_B = 1000000000D;
+	private static final long MILLIS_PER_SEC = 1000L;
+	private static final long SECONDS_PER_MINUTE = 60L;
+	private static final long MINUTES_PER_HOUR = 60L;
+	private static final long SECONDS_PER_HOUR = 3600L;
+	private static final long HOURS_PER_DAY = 24;
+	private static final long SECONDS_PER_DAY = 86400L;
 
 	private static final Pattern NOT_SNAKE_CASE_PATTERN = Pattern.compile("[^a-z0-9_]");
 	private static final Pattern REPEATING_UNDERSCORE_PATTERN = Pattern.compile("_{2,}");
@@ -44,7 +61,9 @@ public class StringUtils
 
 	static
 	{
+		DOUBLE_FORMATTER_00.setMaximumFractionDigits(2);
 		DOUBLE_FORMATTER_00.setRoundingMode(RoundingMode.DOWN);
+		DOUBLE_FORMATTER_0.setMaximumFractionDigits(2);
 		DOUBLE_FORMATTER_0.setRoundingMode(RoundingMode.DOWN);
 	}
 
@@ -296,6 +315,30 @@ public class StringUtils
 		return s.endsWith(".00") ? s.substring(0, s.length() - 3) : s;
 	}
 
+	private static String formatInteger(long value)
+	{
+		return INTEGER_FORMATTER.format(value);
+	}
+
+	private static String formatIntegerZeroPadded(long value, int padToWidth)
+	{
+		// XXX: A potentially tidier way to implement this might be to create a formatter with
+		//      the appropriate minimum digits, but it does mean creating a new formatter...
+
+		String unpadded = INTEGER_FORMATTER.format(value);
+		if (unpadded.length() >= padToWidth)
+		{
+			return unpadded;
+		}
+
+		StringBuilder padded = new StringBuilder(padToWidth);
+		for (int i = 0; i < padToWidth - unpadded.length(); i++)
+		{
+			padded.append(ZERO_PAD);
+		}
+		return padded.toString();
+	}
+
 	public static String formatDouble(double value, boolean fancy)
 	{
 		if (Double.isNaN(value))
@@ -312,31 +355,31 @@ public class StringUtils
 		}
 		else if (value == Long.MAX_VALUE)
 		{
-			return "2^63-1";
+			return formatInteger(2) + "^" + formatInteger(63) + "-" + formatInteger(1);
 		}
 		else if (value == Long.MIN_VALUE)
 		{
-			return "-2^63";
+			return "-" + formatInteger(2) + "^" + formatInteger(63);
 		}
 		else if (value == 0D)
 		{
-			return "0";
+			return formatInteger(0);
 		}
 		else if (!fancy)
 		{
 			return formatDouble00(value);
 		}
-		else if (value >= 1000000000D)
+		else if (value >= ONE_B)
 		{
-			return formatDouble00(value / 1000000000D) + "B";
+			return formatDouble00(value / ONE_B) + "B";
 		}
-		else if (value >= 1000000D)
+		else if (value >= ONE_M)
 		{
-			return formatDouble00(value / 1000000D) + "M";
+			return formatDouble00(value / ONE_M) + "M";
 		}
-		else if (value >= 10000D)
+		else if (value >= TEN_K)
 		{
-			return formatDouble00(value / 1000D) + "K";
+			return formatDouble00(value / ONE_K) + "K";
 		}
 
 		return formatDouble00(value);
@@ -358,60 +401,47 @@ public class StringUtils
 
 		StringBuilder sb = new StringBuilder();
 
-		if (millis < 1000L)
+		if (millis < MILLIS_PER_SEC)
 		{
 			if (neg)
 			{
 				sb.append('-');
 			}
 
-			sb.append(millis);
+			sb.append(formatInteger(millis));
 			sb.append('m');
 			sb.append('s');
 			return sb.toString();
 		}
 
-		long secs = millis / 1000L;
+		long secs = millis / MILLIS_PER_SEC;
 
 		if (neg)
 		{
 			sb.append('-');
 		}
 
-		long h = (secs / 3600L) % 24;
-		long m = (secs / 60L) % 60L;
-		long s = secs % 60L;
+		long h = (secs / SECONDS_PER_HOUR) % HOURS_PER_DAY;
+		long m = (secs / SECONDS_PER_MINUTE) % MINUTES_PER_HOUR;
+		long s = secs % SECONDS_PER_MINUTE;
 
-		if (secs >= 86400L)
+		if (secs >= SECONDS_PER_DAY)
 		{
-			sb.append(secs / 86400L);
+			sb.append(secs / SECONDS_PER_DAY);
 			sb.append('d');
 			sb.append(' ');
 		}
 
-		if (h > 0 || secs >= 86400L)
+		if (h > 0 || secs >= SECONDS_PER_DAY)
 		{
-			if (h < 10)
-			{
-				sb.append('0');
-			}
-			sb.append(h);
-			//sb.append("h ");
+			formatIntegerZeroPadded(h, 2);
 			sb.append(':');
 		}
 
-		if (m < 10)
-		{
-			sb.append('0');
-		}
-		sb.append(m);
+		formatIntegerZeroPadded(m, 2);
 		//sb.append("m ");
 		sb.append(':');
-		if (s < 10)
-		{
-			sb.append('0');
-		}
-		sb.append(s);
+		formatIntegerZeroPadded(s, 2);
 		//sb.append('s');
 
 		return sb.toString();
@@ -546,28 +576,13 @@ public class StringUtils
 
 	public static int stringSize(int x)
 	{
-		for (int i = 0; ; i++)
-		{
-			if (x <= INT_SIZE_TABLE[i])
-			{
-				return i + 1;
-			}
-		}
+		return formatInteger(x).length();
 	}
 
 	public static String add0s(int number, int max)
 	{
 		int size = stringSize(max);
-		int nsize = stringSize(number);
-		StringBuilder builder = new StringBuilder(size);
-
-		for (int i = 0; i < size - nsize; i++)
-		{
-			builder.append('0');
-		}
-
-		builder.append(number);
-		return builder.toString();
+		return formatIntegerZeroPadded(number, size);
 	}
 
 	public static String camelCaseToWords(String key)
